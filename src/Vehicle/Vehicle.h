@@ -244,6 +244,11 @@ public:
     Q_PROPERTY(bool     haveMRSpeedLimits       READ haveMRSpeedLimits                              NOTIFY haveMRSpeedLimChanged)
     Q_PROPERTY(bool     haveFWSpeedLimits       READ haveFWSpeedLimits                              NOTIFY haveFWSpeedLimChanged)
 
+    // Strike mode state properties
+    Q_PROPERTY(bool             inStrikeMode            READ inStrikeMode                                   NOTIFY inStrikeModeChanged)         ///< Vehicle is currently executing strike command
+    Q_PROPERTY(QGeoCoordinate   strikeTarget            READ strikeTarget                                   NOTIFY strikeTargetChanged)         ///< Current strike target coordinates
+    Q_PROPERTY(double           strikeTargetDistance    READ strikeTargetDistance                           NOTIFY strikeTargetDistanceChanged) ///< Distance to strike target in meters
+
     Q_PROPERTY(ParameterManager*        parameterManager    READ parameterManager   CONSTANT)
     Q_PROPERTY(VehicleLinkManager*      vehicleLinkManager  READ vehicleLinkManager CONSTANT)
     Q_PROPERTY(VehicleObjectAvoidance*  objectAvoidance     READ objectAvoidance    CONSTANT)
@@ -343,6 +348,14 @@ public:
     Q_INVOKABLE void guidedModeROI(const QGeoCoordinate& centerCoord);
     Q_INVOKABLE void stopGuidedModeROI();
 
+    /// Command vehicle to execute strike at specified coordinates
+    ///     @param strikeCoord Target coordinates for strike
+    Q_INVOKABLE void guidedModeStrike(const QGeoCoordinate& strikeCoord);
+
+    /// Command vehicle to abort current strike operation
+    ///     @param recoveryCoord Optional recovery coordinates. If invalid, home position is used.
+    Q_INVOKABLE void guidedModeAbortStrike(const QGeoCoordinate& recoveryCoord = QGeoCoordinate());
+
     /// Command vehicle to pause at current location. If vehicle supports guide mode, vehicle will be left
     /// in guided mode after pause.
     Q_INVOKABLE void pauseVehicle();
@@ -392,7 +405,7 @@ public:
     Q_ENUM(PIDTuningTelemetryMode)
 
     Q_INVOKABLE void setPIDTuningTelemetryMode(PIDTuningTelemetryMode mode);
-    
+
     Q_INVOKABLE void forceArm           ();
 
     /// Sends PARAM_MAP_RC message to vehicle
@@ -536,6 +549,9 @@ public:
     uint            messagesLost                () const{ return _messagesLost; }
     bool            flying                      () const { return _flying; }
     bool            landing                     () const { return _landing; }
+    bool            inStrikeMode                () const { return _inStrikeMode; }
+    QGeoCoordinate  strikeTarget                () const { return _strikeTarget; }
+    double          strikeTargetDistance        () const;
     bool            guidedMode                  () const;
     bool            inFwdFlight                 () const;
     bool            vtolInFwdFlight             () const { return _vtolInFwdFlight; }
@@ -675,7 +691,7 @@ public:
     // Callback info for sendMavCommandWithHandler
     typedef struct MavCmdAckHandlerInfo_s {
         MavCmdResultHandler     resultHandler;          ///> nullptr for no handler
-        void*                   resultHandlerData; 
+        void*                   resultHandlerData;
         MavCmdProgressHandler   progressHandler;
         void*                   progressHandlerData;    ///> nullptr for no handler
     } MavCmdAckHandlerInfo_t;
@@ -683,7 +699,7 @@ public:
     /// Sends the command and calls the callback with the result
     void sendMavCommandWithHandler(
         const MavCmdAckHandlerInfo_t* ackHandlerInfo,   ///> nullptr to signale no handlers
-        int compId, MAV_CMD command, 
+        int compId, MAV_CMD command,
         float param1 = 0.0f, float param2 = 0.0f, float param3 = 0.0f, float param4 = 0.0f, float param5 = 0.0f, float param6 = 0.0f, float param7 = 0.0f);
 
     /// Sends the command and calls the callback with the result
@@ -691,7 +707,7 @@ public:
     ///     @param resultHandleData Opaque data passed through callback
     void sendMavCommandIntWithHandler(
         const MavCmdAckHandlerInfo_t* ackHandlerInfo,   ///> nullptr to signale no handlers
-        int compId, MAV_CMD command, MAV_FRAME frame, 
+        int compId, MAV_CMD command, MAV_FRAME frame,
         float param1 = 0.0f, float param2 = 0.0f, float param3 = 0.0f, float param4 = 0.0f, double param5 = 0.0f, double param6 = 0.0f, float param7 = 0.0f);
 
     /// Sends the command and calls the fallback lambda function in
@@ -834,6 +850,9 @@ signals:
     void flightModeChanged              (const QString& flightMode);
     void flyingChanged                  (bool flying);
     void landingChanged                 (bool landing);
+    void inStrikeModeChanged            (bool inStrikeMode);
+    void strikeTargetChanged            (const QGeoCoordinate& strikeTarget);
+    void strikeTargetDistanceChanged    (double distance);
     void guidedModeChanged              (bool guidedMode);
     void inFwdFlightChanged             ();
     void vtolInFwdFlightChanged         (bool vtolInFwdFlight);
@@ -1021,6 +1040,10 @@ private:
     QGeoCoordinate  _coordinate;
     QGeoCoordinate  _homePosition;
     QGeoCoordinate  _armedPosition;
+
+    // Strike mode state
+    bool                        _inStrikeMode = false;
+    QGeoCoordinate              _strikeTarget;
 
     qreal           _initialGCSPressure = 0.;
     qreal           _initialGCSTemperature = 0.;
@@ -1211,9 +1234,9 @@ private:
     static const int                _mavCommandAckTimeoutMSecsHighLatency   = 120000;
 
     void _sendMavCommandWorker  (
-            bool commandInt, bool showError, 
+            bool commandInt, bool showError,
             const MavCmdAckHandlerInfo_t* ackHandlerInfo,   ///> nullptr to signale no handlers
-            int compId, MAV_CMD command, MAV_FRAME frame, 
+            int compId, MAV_CMD command, MAV_FRAME frame,
             float param1, float param2, float param3, float param4, double param5, double param6, float param7);
     void _sendMavCommandFromList(int index);
     int  _findMavCommandListEntryIndex(int targetCompId, MAV_CMD command);
@@ -1353,7 +1376,7 @@ private:
     int     requestOperatorControlRemainingMsecs() const { return _timerRequestOperatorControl.remainingTime(); }
     bool    sendControlRequestAllowed() const { return _sendControlRequestAllowed; }
     void    requestOperatorControlStartTimer(int requestTimeoutMsecs);
-    
+
     uint8_t _sysid_in_control = 0;
     uint8_t _gcsControlStatusFlags = 0;
     bool    _gcsControlStatusFlags_SystemManager = 0;

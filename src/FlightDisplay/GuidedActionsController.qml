@@ -62,6 +62,8 @@ Item {
     readonly property string setEstimatorOriginTitle:       qsTr("Set Estimator origin")
     readonly property string setFlightMode:                 qsTr("Set Flight Mode")
     readonly property string changeHeadingTitle:            qsTr("Change Heading")
+    readonly property string strikeTitle:                   qsTr("Execute Strike")
+    readonly property string abortStrikeTitle:              qsTr("Abort Strike")
 
     readonly property string armMessage:                        qsTr("Arm the vehicle.")
     readonly property string mvArmMessage:                      qsTr("Arm selected vehicles.")
@@ -94,6 +96,8 @@ Item {
     readonly property string setEstimatorOriginMessage:         qsTr("Make the specified location the estimator origin.")
     readonly property string setFlightModeMessage:              qsTr("Set the vehicle flight mode to %1").arg(_actionData)
     readonly property string changeHeadingMessage:              qsTr("Set the vehicle heading towards the specified location.")
+    readonly property string strikeMessage:                     qsTr("Execute strike operation at the specified location.")
+    readonly property string abortStrikeMessage:                qsTr("Abort the current strike operation and return to normal flight.")
 
     readonly property int actionRTL:                        1
     readonly property int actionLand:                       2
@@ -127,6 +131,8 @@ Item {
     readonly property int actionMVArm:                      31
     readonly property int actionMVDisarm:                   32
     readonly property int actionChangeLoiterRadius:         33
+    readonly property int actionStrike:                     34
+    readonly property int actionAbortStrike:                35
 
 
 
@@ -164,6 +170,8 @@ Item {
     property bool showGripper:              _initialConnectComplete ? _activeVehicle.hasGripper : false
     property bool showSetEstimatorOrigin:   _activeVehicle && !(_activeVehicle.sensorsPresentBits & Vehicle.SysStatusSensorGPS)
     property bool showChangeHeading:        _guidedActionsEnabled && _vehicleFlying
+    property bool showStrike:               _guidedActionsEnabled && _vehicleFlying && _activeVehicle.guidedModeSupported
+    property bool showAbortStrike:          _guidedActionsEnabled && _activeVehicle && _activeVehicle.inStrikeMode
 
     property string changeSpeedTitle:   _vehicleInFwdFlight ? changeAirspeedTitle : changeCruiseSpeedTitle
     property string changeSpeedMessage: _vehicleInFwdFlight ? changeAirspeedMessage : changeCruiseSpeedMessage
@@ -587,6 +595,15 @@ Item {
             confirmDialog.title = changeHeadingTitle
             confirmDialog.message = changeHeadingMessage
             break
+        case actionStrike:
+            confirmDialog.title = strikeTitle
+            confirmDialog.message = strikeMessage
+            confirmDialog.hideTrigger = Qt.binding(function() { return !showStrike })
+            break
+        case actionAbortStrike:
+            executeAction(actionAbortStrike, actionData, 0, false)
+            closeAll()
+            return
         default:
             if (!customController.customConfirmAction(actionCode, actionData, mapIndicator, confirmDialog)) {
                 console.warn("Unknown actionCode", actionCode)
@@ -716,7 +733,7 @@ Item {
                 }
             }
             break
-        case actionGripper:           
+        case actionGripper:
             _gripperFunction === undefined ? _activeVehicle.sendGripperAction(Vehicle.Invalid_option) : _activeVehicle.sendGripperAction(_gripperFunction)
             break
         case actionSetHome:
@@ -730,6 +747,12 @@ Item {
             break
         case actionChangeHeading:
             _activeVehicle.guidedModeChangeHeading(actionData)
+            break
+        case actionStrike:
+            _activeVehicle.guidedModeStrike(actionData)
+            break
+        case actionAbortStrike:
+            _activeVehicle.guidedModeAbortStrike(actionData)
             break
         default:
             if (!customController.customExecuteAction(actionCode, actionData, sliderOutputValue, optionChecked)) {

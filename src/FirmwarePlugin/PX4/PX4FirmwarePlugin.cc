@@ -233,7 +233,8 @@ QList<MAV_CMD> PX4FirmwarePlugin::supportedMissionCommands(QGCMAVLink::VehicleCl
         MAV_CMD_NAV_DELAY,
         MAV_CMD_CONDITION_YAW,
         MAV_CMD_NAV_LOITER_TO_ALT,
-        MAV_CMD_DO_GRIPPER
+        MAV_CMD_DO_GRIPPER,
+        static_cast<MAV_CMD>(31010) // MAV_CMD_USER_1
     };
 
     QList<MAV_CMD> vtolCommands = {

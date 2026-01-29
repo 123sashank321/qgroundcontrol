@@ -78,7 +78,7 @@ QGC_LOGGING_CATEGORY(VehicleLog, "VehicleLog")
 #define SET_HOME_TERRAIN_ALT_MIN -500
 
 // After a second GCS has requested control and we have given it permission to takeover, we will remove takeover permission automatically after this timeout
-// If the second GCS didn't get control 
+// If the second GCS didn't get control
 #define REQUEST_OPERATOR_CONTROL_ALLOW_TAKEOVER_TIMEOUT_MSECS 10000
 
 const QString guided_mode_not_supported_by_vehicle = QObject::tr("Guided mode not supported by Vehicle.");
@@ -653,7 +653,7 @@ void Vehicle::_mavlinkMessageReceived(LinkInterface* link, mavlink_message_t mes
     }
     case MAVLINK_MSG_ID_CONTROL_STATUS:
         _handleControlStatus(message);
-        break;   
+        break;
     case MAVLINK_MSG_ID_COMMAND_LONG:
         _handleCommandLong(message);
         break;
@@ -2129,8 +2129,8 @@ double Vehicle::minimumEquivalentAirspeed()
     return _firmwarePlugin->minimumEquivalentAirspeed(this);
 }
 
-bool Vehicle::hasGripper()  const 
-{ 
+bool Vehicle::hasGripper()  const
+{
     return _firmwarePlugin->hasGripper(this);
 }
 
@@ -2300,6 +2300,97 @@ void Vehicle::stopGuidedModeROI()
                     static_cast<float>(qQNaN()),    // Empty
                     static_cast<float>(qQNaN()));   // Empty
     }
+}
+
+void Vehicle::guidedModeStrike(const QGeoCoordinate& strikeCoord)
+{
+    if (!strikeCoord.isValid()) {
+        qCWarning(VehicleLog) << "guidedModeStrike: Invalid strike coordinates";
+        return;
+    }
+
+    if (!guidedModeSupported()) {
+        qgcApp()->showAppMessage(QStringLiteral("Strike mode requires guided mode support."));
+        return;
+    }
+
+    qCDebug(VehicleLog) << "guidedModeStrike: lat:" << strikeCoord.latitude()
+                        << "lon:" << strikeCoord.longitude()
+                        << "alt:" << strikeCoord.altitude();
+
+    // Update strike target and mode
+    _strikeTarget = strikeCoord;
+    _inStrikeMode = true;
+    emit strikeTargetChanged(_strikeTarget);
+    emit inStrikeModeChanged(_inStrikeMode);
+    emit strikeTargetDistanceChanged(strikeTargetDistance());
+
+    // Send MAV_CMD_USER_1 command (31010) with action=0 (Strike)
+    sendMavCommand(
+        defaultComponentId(),
+        static_cast<MAV_CMD>(31010),    // MAV_CMD_USER_1
+        true,                            // showError
+        0,                               // param1: action (0=Strike)
+        0,                               // param2: reserved
+        0,                               // param3: reserved
+        0,                               // param4: reserved
+        static_cast<float>(strikeCoord.latitude()),   // param5: latitude
+        static_cast<float>(strikeCoord.longitude()),  // param6: longitude
+        static_cast<float>(strikeCoord.altitude())    // param7: altitude
+    );
+}
+
+void Vehicle::guidedModeAbortStrike(const QGeoCoordinate& recoveryCoord)
+{
+    if (!_inStrikeMode) {
+        qCWarning(VehicleLog) << "guidedModeAbortStrike: Not currently in strike mode";
+        return;
+    }
+
+    qCDebug(VehicleLog) << "guidedModeAbortStrike: Aborting strike operation";
+
+    double param5 = 0;
+    double param6 = 0;
+    double param7 = 0;
+
+    QGeoCoordinate targetRecovery = recoveryCoord;
+
+    // If no specific recovery point provided (e.g. from Toolbar), use Home
+    if (!targetRecovery.isValid()) {
+        targetRecovery = homePosition();
+    }
+
+    if (targetRecovery.isValid()) {
+        param5 = targetRecovery.latitude();
+        param6 = targetRecovery.longitude();
+        // Use minimum takeoff altitude for recovery
+        param7 = minimumTakeoffAltitudeMeters();
+    }
+
+    // Send MAV_CMD_USER_1 command with action=1 (Abort)
+    sendMavCommand(
+        defaultComponentId(),
+        static_cast<MAV_CMD>(31010),    // MAV_CMD_USER_1
+        true,                            // showError
+        1,                               // param1: action (1=Abort)
+        0, 0, 0,                        // params 2-4: unused
+        param5, param6, param7          // params 5-7: recovery lat, lon, alt
+    );
+
+    // Clear strike mode state
+    _inStrikeMode = false;
+    _strikeTarget = QGeoCoordinate();
+    emit inStrikeModeChanged(_inStrikeMode);
+    emit strikeTargetChanged(_strikeTarget);
+    emit strikeTargetDistanceChanged(0);
+}
+
+double Vehicle::strikeTargetDistance() const
+{
+    if (!_inStrikeMode || !_strikeTarget.isValid() || !_coordinate.isValid()) {
+        return 0.0;
+    }
+    return _coordinate.distanceTo(_strikeTarget);
 }
 
 void Vehicle::guidedModeChangeHeading(const QGeoCoordinate &headingCoord)
@@ -2629,12 +2720,12 @@ bool Vehicle::_commandCanBeDuplicated(MAV_CMD command)
 }
 
 void Vehicle::_sendMavCommandWorker(
-    bool        commandInt, 
-    bool        showError, 
+    bool        commandInt,
+    bool        showError,
     const MavCmdAckHandlerInfo_t* ackHandlerInfo,
-    int         targetCompId, 
-    MAV_CMD     command, 
-    MAV_FRAME   frame, 
+    int         targetCompId,
+    MAV_CMD     command,
+    MAV_FRAME   frame,
     float param1, float param2, float param3, float param4, double param5, double param6, float param7)
 {
     // We can't send commands to compIdAll using this method. The reason being that we would get responses back possibly from multiple components
@@ -2927,7 +3018,7 @@ void Vehicle::_waitForMavlinkMessageMessageReceivedHandler(const mavlink_message
         // We use any incoming message as a trigger to check timeouts on message requests
 
         for (auto& compIdEntry : _requestMessageInfoMap) {
-            for (auto requestMessageInfo : compIdEntry) {    
+            for (auto requestMessageInfo : compIdEntry) {
                 if (requestMessageInfo->messageWaitElapsedTimer.isValid() && requestMessageInfo->messageWaitElapsedTimer.elapsed() > (qgcApp()->runningUnitTests() ? 50 : 1000)) {
                     auto resultHandler      = requestMessageInfo->resultHandler;
                     auto resultHandlerData  = requestMessageInfo->resultHandlerData;
@@ -3668,8 +3759,8 @@ void Vehicle::doSetHome(const QGeoCoordinate& coord)
             disconnect(_currentDoSetHomeTerrainAtCoordinateQuery, &TerrainAtCoordinateQuery::terrainDataReceived, this, &Vehicle::_doSetHomeTerrainReceived);
             _currentDoSetHomeTerrainAtCoordinateQuery = nullptr;
         }
-        // Save the coord for using when our terrain data arrives. If there was a pending terrain query paired with an older coordinate it is safe to 
-        // Override now, as we just disconnected the signal that would trigger the command sending 
+        // Save the coord for using when our terrain data arrives. If there was a pending terrain query paired with an older coordinate it is safe to
+        // Override now, as we just disconnected the signal that would trigger the command sending
         _doSetHomeCoordinate = coord;
         // Now setup and trigger the new terrain query
         _currentDoSetHomeTerrainAtCoordinateQuery = new TerrainAtCoordinateQuery(true /* autoDelet */);
@@ -3949,7 +4040,7 @@ void Vehicle::sendGripperAction(QGCMAVLink::GRIPPER_OPTIONS gripperOption)
         case QGCMAVLink::Invalid_option:
             qDebug("unknown function");
             break;
-        default: 
+        default:
             break;
     }
 }
@@ -4008,7 +4099,7 @@ void Vehicle::startTimerRevertAllowTakeover()
     _timerRevertAllowTakeover.setInterval(operatorControlTakeoverTimeoutMsecs());
     // Disconnect any previous connections to avoid multiple handlers
     disconnect(&_timerRevertAllowTakeover, &QTimer::timeout, nullptr, nullptr);
-    
+
     connect(&_timerRevertAllowTakeover, &QTimer::timeout, this, [this](){
         if (MAVLinkProtocol::instance()->getSystemId() == _sysid_in_control) {
             this->requestOperatorControl(false);
@@ -4062,12 +4153,12 @@ void Vehicle::_requestOperatorControlAckHandler(void* resultHandlerData, int com
         default:
             break;
     }
-    
+
     Vehicle* vehicle = static_cast<Vehicle*>(resultHandlerData);
     if (!vehicle) {
         return;
     }
-    
+
     if (ack.result == MAV_RESULT_ACCEPTED) {
         qCDebug(VehicleLog) << "Operator control request accepted";
     } else {

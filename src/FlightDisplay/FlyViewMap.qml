@@ -505,6 +505,47 @@ FlightMap {
         }
     }
 
+    // Strike Location visuals
+    MapQuickItem {
+        id:             strikeLocationItem
+        visible:        _activeVehicle && _activeVehicle.inStrikeMode
+        z:              QGroundControl.zOrderMapItems
+        anchorPoint.x:  sourceItem.anchorPointX
+        anchorPoint.y:  sourceItem.anchorPointY
+
+        Connections {
+            target: _activeVehicle
+            function onStrikeTargetChanged(strikeTarget) {
+                if (strikeTarget.isValid) {
+                    strikeLocationItem.coordinate = strikeTarget
+                }
+            }
+        }
+
+        Connections {
+            target: _activeVehicle
+            function onInStrikeModeChanged(inStrikeMode) {
+                if (inStrikeMode) {
+                    strikeLocationItem.visible = true
+                } else {
+                    strikeLocationItem.visible = false
+                }
+            }
+        }
+
+        sourceItem: MissionItemIndexLabel {
+            checked:    true
+            index:      -1
+            label:      qsTr("Strike", "Strike location waypoint")
+        }
+
+        Component.onCompleted: {
+            if (_activeVehicle && _activeVehicle.inStrikeMode && _activeVehicle.strikeTarget.isValid) {
+                coordinate = _activeVehicle.strikeTarget
+            }
+        }
+    }
+
     // Orbit editing visuals
     QGCMapCircleVisuals {
         id:             orbitMapCircle
@@ -655,7 +696,7 @@ FlightMap {
                     QGCButton {
                         Layout.fillWidth:   true
                         text:               qsTr("Edit Position")
-                        onClicked: {         
+                        onClicked: {
                             roiEditPositionDialogComponent.createObject(mainWindow, { showSetPositionFromVehicle: false }).open()
                             roiEditDropPanel.close()
                         }
@@ -745,6 +786,26 @@ FlightMap {
                         }
                     }
 
+                    QGCButton {
+                        Layout.fillWidth:   true
+                        text:               qsTr("Execute Strike")
+                        visible:            globals.guidedControllerFlyView.showStrike
+                        onClicked: {
+                            mapClickDropPanel.close()
+                            globals.guidedControllerFlyView.confirmAction(globals.guidedControllerFlyView.actionStrike, mapClickCoord)
+                        }
+                    }
+
+                    QGCButton {
+                        Layout.fillWidth:   true
+                        text:               qsTr("Abort Strike")
+                        visible:            globals.guidedControllerFlyView.showAbortStrike
+                        onClicked: {
+                            mapClickDropPanel.close()
+                            globals.guidedControllerFlyView.confirmAction(globals.guidedControllerFlyView.actionAbortStrike, mapClickCoord)
+                        }
+                    }
+
                     ColumnLayout {
                         spacing: 0
                         QGCLabel { text: qsTr("Lat: %1").arg(mapClickCoord.latitude.toFixed(6)) }
@@ -756,7 +817,7 @@ FlightMap {
     }
 
     onMapClicked: (position) => {
-        if (!globals.guidedControllerFlyView.guidedUIVisible && 
+        if (!globals.guidedControllerFlyView.guidedUIVisible &&
             (globals.guidedControllerFlyView.showGotoLocation || globals.guidedControllerFlyView.showOrbit ||
              globals.guidedControllerFlyView.showROI || globals.guidedControllerFlyView.showSetHome ||
              globals.guidedControllerFlyView.showSetEstimatorOrigin)) {

@@ -32,12 +32,14 @@ qt_add_qml_module(FlightDisplayModule
         FlyViewVideo.qml
         FlyViewWidgetLayer.qml
         GripperMenu.qml
+        GuidedActionAbortStrike.qml
         GuidedActionConfirm.qml
         GuidedActionGripper.qml
         GuidedActionLand.qml
         GuidedActionPause.qml
         GuidedActionRTL.qml
         GuidedActionsController.qml
+        GuidedActionStrike.qml
         GuidedActionTakeoff.qml
         GuidedToolStripAction.qml
         GuidedValueSlider.qml

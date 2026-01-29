@@ -12,7 +12,7 @@ import QtQml
 QtObject {
     property var guidedController
 
-    property bool anyActionAvailable: guidedController.showStartMission || guidedController.showContinueMission || guidedController.showChangeAlt || 
+    property bool anyActionAvailable: guidedController.showStartMission || guidedController.showContinueMission || guidedController.showChangeAlt ||
                                       guidedController.showChangeLoiterRadius ||  guidedController.showLandAbort || guidedController.showChangeSpeed ||
                                       guidedController.showGripper
     property var model: [
@@ -51,6 +51,12 @@ QtObject {
             text:       guidedController.changeSpeedMessage,
             action:     guidedController.actionChangeSpeed,
             visible:    guidedController.showChangeSpeed
+        },
+        {
+            title:      guidedController.gripperTitle,
+            text:       guidedController.gripperMessage,
+            action:     guidedController.actionGripper,
+            visible:    guidedController.showGripper
         },
         {
             title:      guidedController.gripperTitle,
