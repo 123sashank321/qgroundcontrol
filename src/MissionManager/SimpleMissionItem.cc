@@ -386,6 +386,8 @@ QString SimpleMissionItem::abbreviation() const
     case MAV_CMD_DO_SET_ROI:
     case MAV_CMD_DO_SET_ROI_LOCATION:
         return tr("ROI");
+    case 31010: // MAV_CMD_USER_1 (Strike) -- not a named enum constant in this MAVLink dialect
+        return tr("Strike");
     case MAV_CMD_NAV_LOITER_TIME:
     case MAV_CMD_NAV_LOITER_TURNS:
     case MAV_CMD_NAV_LOITER_UNLIM:

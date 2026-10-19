@@ -54,6 +54,7 @@
         <file alias="QGroundControlConnect.svg">resources/QGroundControlConnect.svg</file>
         <file alias="rtl.svg">resources/rtl.svg</file>
         <file alias="sliders.svg">resources/sliders.svg</file>
+        <file alias="strike_target.svg">resources/strike_target.svg</file>
         <file alias="SaveToDisk.svg">resources/SaveToDisk.svg</file>
         <file alias="SplashScreen">resources/SplashScreen.png</file>
         <file alias="Stop.svg">resources/Stop.svg</file>

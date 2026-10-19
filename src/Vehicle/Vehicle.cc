@@ -2257,6 +2257,97 @@ void Vehicle::stopGuidedModeROI()
     }
 }
 
+void Vehicle::guidedModeStrike(const QGeoCoordinate& strikeCoord)
+{
+    if (!strikeCoord.isValid()) {
+        qCWarning(VehicleLog) << "guidedModeStrike: Invalid strike coordinates";
+        return;
+    }
+
+    if (!guidedModeSupported()) {
+        qgcApp()->showAppMessage(QStringLiteral("Strike mode requires guided mode support."));
+        return;
+    }
+
+    qCDebug(VehicleLog) << "guidedModeStrike: lat:" << strikeCoord.latitude()
+                        << "lon:" << strikeCoord.longitude()
+                        << "alt:" << strikeCoord.altitude();
+
+    // Update strike target and mode
+    _strikeTarget = strikeCoord;
+    _inStrikeMode = true;
+    emit strikeTargetChanged(_strikeTarget);
+    emit inStrikeModeChanged(_inStrikeMode);
+    emit strikeTargetDistanceChanged(strikeTargetDistance());
+
+    // Send MAV_CMD_USER_1 command (31010) with action=0 (Strike)
+    sendMavCommand(
+        defaultComponentId(),
+        static_cast<MAV_CMD>(31010),    // MAV_CMD_USER_1
+        true,                            // showError
+        0,                               // param1: action (0=Strike)
+        0,                               // param2: reserved
+        0,                               // param3: reserved
+        0,                               // param4: reserved
+        static_cast<float>(strikeCoord.latitude()),   // param5: latitude
+        static_cast<float>(strikeCoord.longitude()),  // param6: longitude
+        static_cast<float>(strikeCoord.altitude())    // param7: altitude
+    );
+}
+
+void Vehicle::guidedModeAbortStrike(const QGeoCoordinate& recoveryCoord)
+{
+    if (!_inStrikeMode) {
+        qCWarning(VehicleLog) << "guidedModeAbortStrike: Not currently in strike mode";
+        return;
+    }
+
+    qCDebug(VehicleLog) << "guidedModeAbortStrike: Aborting strike operation";
+
+    double param5 = 0;
+    double param6 = 0;
+    double param7 = 0;
+
+    QGeoCoordinate targetRecovery = recoveryCoord;
+
+    // If no specific recovery point provided (e.g. from Toolbar), use Home
+    if (!targetRecovery.isValid()) {
+        targetRecovery = homePosition();
+    }
+
+    if (targetRecovery.isValid()) {
+        param5 = targetRecovery.latitude();
+        param6 = targetRecovery.longitude();
+        // Use minimum takeoff altitude for recovery
+        param7 = minimumTakeoffAltitudeMeters();
+    }
+
+    // Send MAV_CMD_USER_1 command with action=1 (Abort)
+    sendMavCommand(
+        defaultComponentId(),
+        static_cast<MAV_CMD>(31010),    // MAV_CMD_USER_1
+        true,                            // showError
+        1,                               // param1: action (1=Abort)
+        0, 0, 0,                        // params 2-4: unused
+        param5, param6, param7          // params 5-7: recovery lat, lon, alt
+    );
+
+    // Clear strike mode state
+    _inStrikeMode = false;
+    _strikeTarget = QGeoCoordinate();
+    emit inStrikeModeChanged(_inStrikeMode);
+    emit strikeTargetChanged(_strikeTarget);
+    emit strikeTargetDistanceChanged(0);
+}
+
+double Vehicle::strikeTargetDistance() const
+{
+    if (!_inStrikeMode || !_strikeTarget.isValid() || !_coordinate.isValid()) {
+        return 0.0;
+    }
+    return _coordinate.distanceTo(_strikeTarget);
+}
+
 void Vehicle::guidedModeChangeHeading(const QGeoCoordinate &headingCoord)
 {
     if (!changeHeadingSupported()) {

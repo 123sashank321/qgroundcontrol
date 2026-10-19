@@ -234,6 +234,11 @@ public:
     Q_PROPERTY(bool     haveMRSpeedLimits       READ haveMRSpeedLimits                              NOTIFY haveMRSpeedLimChanged)
     Q_PROPERTY(bool     haveFWSpeedLimits       READ haveFWSpeedLimits                              NOTIFY haveFWSpeedLimChanged)
 
+    // Strike mode state properties
+    Q_PROPERTY(bool             inStrikeMode            READ inStrikeMode                                   NOTIFY inStrikeModeChanged)         ///< Vehicle is currently executing strike command
+    Q_PROPERTY(QGeoCoordinate   strikeTarget            READ strikeTarget                                   NOTIFY strikeTargetChanged)         ///< Current strike target coordinates
+    Q_PROPERTY(double           strikeTargetDistance    READ strikeTargetDistance                           NOTIFY strikeTargetDistanceChanged) ///< Distance to strike target in meters
+
     Q_PROPERTY(ParameterManager*        parameterManager    READ parameterManager   CONSTANT)
     Q_PROPERTY(VehicleLinkManager*      vehicleLinkManager  READ vehicleLinkManager CONSTANT)
     Q_PROPERTY(VehicleObjectAvoidance*  objectAvoidance     READ objectAvoidance    CONSTANT)
@@ -335,6 +340,14 @@ public:
     ///     @param centerCoord ROI coordinates
     Q_INVOKABLE void guidedModeROI(const QGeoCoordinate& centerCoord);
     Q_INVOKABLE void stopGuidedModeROI();
+
+    /// Command vehicle to execute strike at specified coordinates
+    ///     @param strikeCoord Target coordinates for strike
+    Q_INVOKABLE void guidedModeStrike(const QGeoCoordinate& strikeCoord);
+
+    /// Command vehicle to abort current strike operation
+    ///     @param recoveryCoord Optional recovery coordinates. If invalid, home position is used.
+    Q_INVOKABLE void guidedModeAbortStrike(const QGeoCoordinate& recoveryCoord = QGeoCoordinate());
 
     /// Command vehicle to pause at current location. If vehicle supports guide mode, vehicle will be left
     /// in guided mode after pause.
@@ -518,6 +531,9 @@ public:
     uint            messagesLost                () const{ return _messagesLost; }
     bool            flying                      () const { return _flying; }
     bool            landing                     () const { return _landing; }
+    bool            inStrikeMode                () const { return _inStrikeMode; }
+    QGeoCoordinate  strikeTarget                () const { return _strikeTarget; }
+    double          strikeTargetDistance        () const;
     bool            guidedMode                  () const;
     bool            inFwdFlight                 () const;
     bool            vtolInFwdFlight             () const { return _vtolInFwdFlight; }
@@ -808,6 +824,9 @@ signals:
     void flightModeChanged              (const QString& flightMode);
     void flyingChanged                  (bool flying);
     void landingChanged                 (bool landing);
+    void inStrikeModeChanged            (bool inStrikeMode);
+    void strikeTargetChanged            (const QGeoCoordinate& strikeTarget);
+    void strikeTargetDistanceChanged    (double distance);
     void guidedModeChanged              (bool guidedMode);
     void inFwdFlightChanged             ();
     void vtolInFwdFlightChanged         (bool vtolInFwdFlight);
@@ -999,6 +1018,10 @@ void _activeVehicleChanged          (Vehicle* newActiveVehicle);
     QGeoCoordinate  _coordinate;
     QGeoCoordinate  _homePosition;
     QGeoCoordinate  _armedPosition;
+
+    // Strike mode state
+    bool                        _inStrikeMode = false;
+    QGeoCoordinate              _strikeTarget;
 
     qreal           _initialGCSPressure = 0.;
     qreal           _initialGCSTemperature = 0.;
