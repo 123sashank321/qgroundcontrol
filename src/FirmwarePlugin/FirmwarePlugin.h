@@ -161,6 +161,9 @@ public:
     /// Returns the flight mode which the vehicle will be for follow me
     virtual QString followFlightMode() const { return QString(); }
 
+    /// Returns the flight mode the vehicle reports while executing a strike (MAV_CMD_USER_1)
+    virtual QString strikeFlightMode() const { return QString(); }
+
     /// Set guided flight mode
     virtual void setGuidedMode(Vehicle *vehicle, bool guidedMode) const;
 

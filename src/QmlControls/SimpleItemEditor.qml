@@ -144,7 +144,7 @@ Rectangle {
 
                     RowLayout {
                         Layout.fillWidth: true
-                        visible: _globalAltModeIsMixed
+                        visible: _globalAltModeIsMixed && !missionItem.isStrikeItem
 
                         QGCLabel {
                             Layout.fillWidth: true
@@ -161,6 +161,7 @@ Rectangle {
                     FactTextFieldSlider {
                         id: altField
                         Layout.fillWidth: true
+                        visible: !missionItem.isStrikeItem
                         label: qsTr("Altitude%1").arg(_extraLabelText())
                         fact: missionItem.altitude
 
@@ -176,7 +177,17 @@ Rectangle {
                     QGCLabel {
                         font.pointSize: ScreenTools.smallFontPointSize
                         text: qsTr("Actual AMSL alt sent: %1 %2").arg(missionItem.amslAltAboveTerrain.valueString).arg(missionItem.amslAltAboveTerrain.units)
-                        visible: missionItem.altitudeMode === QGroundControl.AltitudeModeCalcAboveTerrain
+                        visible: missionItem.altitudeMode === QGroundControl.AltitudeModeCalcAboveTerrain && !missionItem.isStrikeItem
+                    }
+
+                    // Strike targets sit on the ground, so their altitude comes from terrain data
+                    QGCLabel {
+                        Layout.fillWidth: true
+                        wrapMode: Text.WordWrap
+                        visible: missionItem.isStrikeItem
+                        text: isNaN(missionItem.amslAltAboveTerrain.rawValue)
+                              ? qsTr("Target altitude: ground level (waiting for terrain data)")
+                              : qsTr("Target altitude: ground level, %1 %2 AMSL").arg(missionItem.amslAltAboveTerrain.valueString).arg(missionItem.amslAltAboveTerrain.units)
                     }
                 }
 

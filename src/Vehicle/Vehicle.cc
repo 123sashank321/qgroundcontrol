@@ -115,6 +115,7 @@ Vehicle::Vehicle(LinkInterface*             link,
     connect(MAVLinkProtocol::instance(), &MAVLinkProtocol::mavlinkMessageStatus,   this, &Vehicle::_mavlinkMessageStatus);
 
     connect(this, &Vehicle::flightModeChanged,          this, &Vehicle::_handleFlightModeChanged);
+    connect(this, &Vehicle::flightModeChanged,          this, &Vehicle::_updateInStrikeMode);
     connect(this, &Vehicle::armedChanged,               this, &Vehicle::_announceArmedChanged);
     connect(this, &Vehicle::flyingChanged, this, [this](bool flying){
         if (flying) {
@@ -2269,30 +2270,117 @@ void Vehicle::guidedModeStrike(const QGeoCoordinate& strikeCoord)
         return;
     }
 
+    if (qIsFinite(strikeCoord.altitude())) {
+        _sendStrikeCommand(strikeCoord, static_cast<float>(strikeCoord.altitude()));
+        return;
+    }
+
+    // Map clicks carry no altitude. Striker takes param7 as AMSL, so aim at the terrain under the click
+    // (same approach as guidedModeROI). A newer click supersedes a query still in flight.
+    if (_strikeTerrainAtCoordinateQuery) {
+        disconnect(_strikeTerrainAtCoordinateQuery, &TerrainAtCoordinateQuery::terrainDataReceived, this, &Vehicle::_strikeTerrainReceived);
+        _strikeTerrainAtCoordinateQuery = nullptr;
+    }
+
+    _strikeTerrainCoordinate = strikeCoord;
+
+    _strikeTerrainAtCoordinateQuery = new TerrainAtCoordinateQuery(true /* autoDelete */);
+    connect(_strikeTerrainAtCoordinateQuery, &TerrainAtCoordinateQuery::terrainDataReceived, this, &Vehicle::_strikeTerrainReceived);
+    _strikeTerrainAtCoordinateQuery->requestData({ strikeCoord });
+}
+
+void Vehicle::_strikeTerrainReceived(bool success, QList<double> heights)
+{
+    _strikeTerrainAtCoordinateQuery = nullptr;
+
+    if (!_strikeTerrainCoordinate.isValid()) {
+        return;
+    }
+
+    float strikeAlt;
+    if (success && !heights.isEmpty()) {
+        strikeAlt = static_cast<float>(heights[0]);
+    } else if (qIsFinite(_homePosition.altitude())) {
+        qCWarning(VehicleLog) << "guidedModeStrike: terrain query failed, using home altitude";
+        strikeAlt = static_cast<float>(_homePosition.altitude());
+    } else {
+        // 0 makes striker use the EKF origin altitude as ground level
+        qCWarning(VehicleLog) << "guidedModeStrike: terrain query failed and no home altitude, vehicle will use EKF origin altitude";
+        strikeAlt = 0.0f;
+    }
+
+    _sendStrikeCommand(_strikeTerrainCoordinate, strikeAlt);
+    _strikeTerrainCoordinate = QGeoCoordinate();
+}
+
+void Vehicle::_sendStrikeCommand(const QGeoCoordinate& strikeCoord, float altitudeAMSL)
+{
     qCDebug(VehicleLog) << "guidedModeStrike: lat:" << strikeCoord.latitude()
                         << "lon:" << strikeCoord.longitude()
-                        << "alt:" << strikeCoord.altitude();
+                        << "altAMSL:" << altitudeAMSL;
 
-    // Update strike target and mode
-    _strikeTarget = strikeCoord;
-    _inStrikeMode = true;
-    emit strikeTargetChanged(_strikeTarget);
-    emit inStrikeModeChanged(_inStrikeMode);
-    emit strikeTargetDistanceChanged(strikeTargetDistance());
+    // The target is only shown once the vehicle accepts it (see _strikeCommandResultHandler),
+    // and inStrikeMode follows the flight mode the vehicle reports (see _updateInStrikeMode).
+    _requestedStrikeTarget = QGeoCoordinate(strikeCoord.latitude(), strikeCoord.longitude(), altitudeAMSL);
 
+    MavCmdAckHandlerInfo_t handlerInfo = {};
+    handlerInfo.resultHandler       = _strikeCommandResultHandler;
+    handlerInfo.resultHandlerData   = this;
+
+    // COMMAND_INT carries lat/lon as degE7 integers (~1 cm); COMMAND_LONG floats would lose up to ~1 m.
     // Send MAV_CMD_USER_1 command (31010) with action=0 (Strike)
-    sendMavCommand(
+    sendMavCommandIntWithHandler(
+        &handlerInfo,
         defaultComponentId(),
         static_cast<MAV_CMD>(31010),    // MAV_CMD_USER_1
-        true,                            // showError
+        MAV_FRAME_GLOBAL,                // altitude is AMSL
         0,                               // param1: action (0=Strike)
         0,                               // param2: reserved
         0,                               // param3: reserved
         0,                               // param4: reserved
-        static_cast<float>(strikeCoord.latitude()),   // param5: latitude
-        static_cast<float>(strikeCoord.longitude()),  // param6: longitude
-        static_cast<float>(strikeCoord.altitude())    // param7: altitude
+        strikeCoord.latitude(),          // x: latitude
+        strikeCoord.longitude(),         // y: longitude
+        altitudeAMSL                     // z: target altitude AMSL
     );
+}
+
+void Vehicle::_strikeCommandResultHandler(void* resultHandlerData, int /*compId*/, const mavlink_command_ack_t& ack, MavCmdResultFailureCode_t failureCode)
+{
+    Vehicle* vehicle = static_cast<Vehicle*>(resultHandlerData);
+    const QGeoCoordinate requestedTarget = vehicle->_requestedStrikeTarget;
+    vehicle->_requestedStrikeTarget = QGeoCoordinate();
+
+    if (failureCode == MavCmdResultCommandResultOnly && ack.result == MAV_RESULT_ACCEPTED) {
+        vehicle->_strikeTarget = requestedTarget;
+        emit vehicle->strikeTargetChanged(vehicle->_strikeTarget);
+        emit vehicle->strikeTargetDistanceChanged(vehicle->strikeTargetDistance());
+        return;
+    }
+
+    // Rejections are explained by the vehicle's own status text; only report a missing response here.
+    if (failureCode == MavCmdResultCommandResultOnly) {
+        qCWarning(VehicleLog) << "Strike command rejected:" << QGCMAVLink::mavResultToString(ack.result);
+    } else {
+        qgcApp()->showAppMessage(tr("Strike command failed: %1").arg(mavCmdResultFailureCodeToString(failureCode)));
+    }
+}
+
+void Vehicle::_updateInStrikeMode()
+{
+    const QString strikeMode = _firmwarePlugin->strikeFlightMode();
+    const bool inStrikeMode = !strikeMode.isEmpty() && (flightMode() == strikeMode);
+    if (inStrikeMode == _inStrikeMode) {
+        return;
+    }
+
+    _inStrikeMode = inStrikeMode;
+    if (!_inStrikeMode) {
+        // Strike completed, aborted or dropped by the vehicle: the target no longer applies
+        _strikeTarget = QGeoCoordinate();
+        emit strikeTargetChanged(_strikeTarget);
+    }
+    emit inStrikeModeChanged(_inStrikeMode);
+    emit strikeTargetDistanceChanged(strikeTargetDistance());
 }
 
 void Vehicle::guidedModeAbortStrike(const QGeoCoordinate& recoveryCoord)
@@ -2304,10 +2392,6 @@ void Vehicle::guidedModeAbortStrike(const QGeoCoordinate& recoveryCoord)
 
     qCDebug(VehicleLog) << "guidedModeAbortStrike: Aborting strike operation";
 
-    double param5 = 0;
-    double param6 = 0;
-    double param7 = 0;
-
     QGeoCoordinate targetRecovery = recoveryCoord;
 
     // If no specific recovery point provided (e.g. from Toolbar), use Home
@@ -2315,29 +2399,26 @@ void Vehicle::guidedModeAbortStrike(const QGeoCoordinate& recoveryCoord)
         targetRecovery = homePosition();
     }
 
-    if (targetRecovery.isValid()) {
-        param5 = targetRecovery.latitude();
-        param6 = targetRecovery.longitude();
-        // Use minimum takeoff altitude for recovery
-        param7 = minimumTakeoffAltitudeMeters();
-    }
+    // Lat/lon 0,0 means "no recovery point": striker aborts without repositioning.
+    // The recovery altitude is chosen by striker (highest of current altitude, home + STR_REC_ALT
+    // and target + STR_REC_ALT), so z is not used.
+    const double recoveryLat = targetRecovery.isValid() ? targetRecovery.latitude() : 0.0;
+    const double recoveryLon = targetRecovery.isValid() ? targetRecovery.longitude() : 0.0;
 
     // Send MAV_CMD_USER_1 command with action=1 (Abort)
-    sendMavCommand(
+    sendMavCommandInt(
         defaultComponentId(),
         static_cast<MAV_CMD>(31010),    // MAV_CMD_USER_1
+        MAV_FRAME_GLOBAL,
         true,                            // showError
         1,                               // param1: action (1=Abort)
-        0, 0, 0,                        // params 2-4: unused
-        param5, param6, param7          // params 5-7: recovery lat, lon, alt
+        0, 0, 0,                         // params 2-4: unused
+        recoveryLat, recoveryLon,        // x, y: recovery lat, lon
+        0                                // z: unused, striker applies STR_REC_ALT
     );
 
-    // Clear strike mode state
-    _inStrikeMode = false;
-    _strikeTarget = QGeoCoordinate();
-    emit inStrikeModeChanged(_inStrikeMode);
-    emit strikeTargetChanged(_strikeTarget);
-    emit strikeTargetDistanceChanged(0);
+    // Strike state clears when the vehicle reports it has left strike mode (_updateInStrikeMode)
+    _requestedStrikeTarget = QGeoCoordinate();
 }
 
 double Vehicle::strikeTargetDistance() const

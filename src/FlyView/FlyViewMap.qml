@@ -494,43 +494,19 @@ FlightMap {
     }
 
     // Strike Location visuals
+    // Shown only while the vehicle reports strike mode and has accepted a target
     MapQuickItem {
         id:             strikeLocationItem
-        visible:        _activeVehicle && _activeVehicle.inStrikeMode
+        visible:        _activeVehicle && _activeVehicle.inStrikeMode && _activeVehicle.strikeTarget.isValid
+        coordinate:     _activeVehicle ? _activeVehicle.strikeTarget : QtPositioning.coordinate()
         z:              QGroundControl.zOrderMapItems
         anchorPoint.x:  sourceItem.anchorPointX
         anchorPoint.y:  sourceItem.anchorPointY
-
-        Connections {
-            target: _activeVehicle
-            function onStrikeTargetChanged(strikeTarget) {
-                if (strikeTarget.isValid) {
-                    strikeLocationItem.coordinate = strikeTarget
-                }
-            }
-        }
-
-        Connections {
-            target: _activeVehicle
-            function onInStrikeModeChanged(inStrikeMode) {
-                if (inStrikeMode) {
-                    strikeLocationItem.visible = true
-                } else {
-                    strikeLocationItem.visible = false
-                }
-            }
-        }
 
         sourceItem: MissionItemIndexLabel {
             checked:    true
             index:      -1
             label:      qsTr("Strike", "Strike location waypoint")
-        }
-
-        Component.onCompleted: {
-            if (_activeVehicle && _activeVehicle.inStrikeMode && _activeVehicle.strikeTarget.isValid) {
-                coordinate = _activeVehicle.strikeTarget
-            }
         }
     }
 

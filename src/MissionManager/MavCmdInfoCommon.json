@@ -1312,21 +1312,11 @@
             "id":                   31010,
             "rawName":              "MAV_CMD_USER_1",
             "friendlyName":         "Strike Point",
-            "description":          "Execute a strike at the specified location, or abort an in-progress strike.",
+            "description":          "Execute a strike at the specified location (target altitude is the terrain).",
             "specifiesCoordinate":  true,
             "standaloneCoordinate": false,
             "friendlyEdit":         true,
-            "category":             "Flight control",
-            "param1": {
-                "label":            "Action",
-                "enumStrings":      "Strike,Abort",
-                "enumValues":       "0,1",
-                "default":          0,
-                "decimalPlaces":    0
-            },
-            "param2": { "label": "Reserved", "default": 0, "decimalPlaces": 0 },
-            "param3": { "label": "Reserved", "default": 0, "decimalPlaces": 0 },
-            "param4": { "label": "Reserved", "default": 0, "decimalPlaces": 0 }
+            "category":             "Flight control"
         }
     ]
 }

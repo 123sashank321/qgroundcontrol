@@ -306,7 +306,7 @@ VisualMissionItem* MissionController::_insertSimpleMissionItemWorker(QGeoCoordin
     newItem->setCommand(command);
     _initVisualItem(newItem);
 
-    if (newItem->specifiesAltitude()) {
+    if (newItem->specifiesAltitude() && !newItem->isStrikeItem()) {
         if (!MissionCommandTree::instance()->isLandCommand(command)) {
             double                              prevAltitude;
             QGroundControlQmlGlobal::AltMode    prevAltMode;
@@ -396,6 +396,11 @@ VisualMissionItem* MissionController::insertLandItem(QGeoCoordinate coordinate, 
     } else {
         return _insertSimpleMissionItemWorker(coordinate, _controllerVehicle->vtol() ? MAV_CMD_NAV_VTOL_LAND : MAV_CMD_NAV_RETURN_TO_LAUNCH, visualItemIndex, makeCurrentItem);
     }
+}
+
+VisualMissionItem* MissionController::insertStrikeItem(QGeoCoordinate coordinate, int visualItemIndex, bool makeCurrentItem)
+{
+    return _insertSimpleMissionItemWorker(coordinate, static_cast<MAV_CMD>(SimpleMissionItem::StrikeCommand), visualItemIndex, makeCurrentItem);
 }
 
 VisualMissionItem* MissionController::insertROIMissionItem(QGeoCoordinate coordinate, int visualItemIndex, bool makeCurrentItem)

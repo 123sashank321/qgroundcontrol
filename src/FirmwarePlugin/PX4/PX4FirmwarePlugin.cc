@@ -8,9 +8,14 @@
 #include "Vehicle.h"
 
 #include <QDebug>
+#include <algorithm>
 #include <QString>
 
 #include "px4_custom_mode.h"
+
+// Display name of PX4-Striker's guided dive mode (NAVIGATION_STATE_STRIKE) in the flight mode
+// indicator and spoken announcements. Change this one line to rename it everywhere in QGC.
+static constexpr const char* kStrikeFlightModeName = QT_TRANSLATE_NOOP("PX4FirmwarePlugin", "Target Approach");
 
 PX4FirmwarePluginInstanceData::PX4FirmwarePluginInstanceData(QObject* parent)
     : FirmwarePluginInstanceData(parent)
@@ -39,6 +44,7 @@ PX4FirmwarePlugin::PX4FirmwarePlugin()
     const QString followMeFlightModeName = tr("Follow Me");
     const QString simpleFlightModeName = tr("Simple");
     const QString orbitFlightModeName = tr("Orbit");
+    const QString strikeFlightModeName = tr(kStrikeFlightModeName);
 
     _setModeEnumToModeStringMapping({
         { PX4CustomMode::MANUAL,        manualFlightModeName      },
@@ -58,6 +64,7 @@ PX4FirmwarePlugin::PX4FirmwarePlugin()
         { PX4CustomMode::AUTO_READY,    readyFlightModeName       },
         { PX4CustomMode::AUTO_RTGS,     rtgsFlightModeName        },
         { PX4CustomMode::AUTO_TAKEOFF,  takeoffFlightModeName     },
+        { PX4CustomMode::AUTO_STRIKE,   strikeFlightModeName      },
     });
 
     static FlightModeList availableFlightModes = {
@@ -79,6 +86,7 @@ PX4FirmwarePlugin::PX4FirmwarePlugin()
         { readyFlightModeName,      PX4CustomMode::AUTO_READY,      false,  false},
         { rtgsFlightModeName,       PX4CustomMode::AUTO_RTGS,       false,  false},
         { takeoffFlightModeName,    PX4CustomMode::AUTO_TAKEOFF,    false,  false},
+        { strikeFlightModeName,     PX4CustomMode::AUTO_STRIKE,     false,  true },
     };
 
     updateAvailableFlightModes(availableFlightModes);
@@ -629,6 +637,11 @@ QString PX4FirmwarePlugin::takeOffFlightMode() const
     return _modeEnumToString.value(PX4CustomMode::AUTO_TAKEOFF);
 }
 
+QString PX4FirmwarePlugin::strikeFlightMode() const
+{
+    return _modeEnumToString.value(PX4CustomMode::AUTO_STRIKE);
+}
+
 QString PX4FirmwarePlugin::stabilizedFlightMode() const
 {
     return _modeEnumToString.value(PX4CustomMode::STABILIZED);
@@ -780,6 +793,7 @@ void PX4FirmwarePlugin::updateAvailableFlightModes(FlightModeList &modeList)
             mode.multiRotor = true;
             break;
         case PX4CustomMode::POSCTL_ORBIT      :
+        case PX4CustomMode::AUTO_STRIKE       :
             mode.multiRotor = false;
             break;
         }
@@ -806,10 +820,21 @@ void PX4FirmwarePlugin::updateAvailableFlightModes(FlightModeList &modeList)
         case PX4CustomMode::AUTO_READY        :
         case PX4CustomMode::AUTO_RTGS         :
         case PX4CustomMode::AUTO_TAKEOFF      :
+        case PX4CustomMode::AUTO_STRIKE       :
             mode.fixedWing = true;
             break;
         }
     }
+
+    // PX4 does not advertise the strike nav state in AVAILABLE_MODES, so a vehicle-supplied
+    // mode list would drop its name. Keep it mapped; it is entered by command, never selected.
+    const bool haveStrikeMode = std::any_of(modeList.cbegin(), modeList.cend(), [](const FirmwareFlightMode& mode) {
+        return mode.custom_mode == PX4CustomMode::AUTO_STRIKE;
+    });
+    if (!haveStrikeMode) {
+        modeList.append(FirmwareFlightMode(tr(kStrikeFlightModeName), PX4CustomMode::AUTO_STRIKE, false /* canBeSet */, true /* advanced */));
+    }
+
     _updateFlightModeList(modeList);
 }
 

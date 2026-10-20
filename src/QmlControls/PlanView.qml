@@ -200,6 +200,11 @@ Item {
         _missionController.insertTakeoffItem(mapCenter(), nextIndex, true /* makeCurrentItem */)
     }
 
+    function insertStrikeItemAfterCurrent() {
+        var nextIndex = _missionController.currentPlanViewVIIndex + 1
+        _missionController.insertStrikeItem(mapCenter(), nextIndex, true /* makeCurrentItem */)
+    }
+
     function insertLandItemAfterCurrent() {
         var nextIndex = _missionController.currentPlanViewVIIndex + 1
         _missionController.insertLandItem(mapCenter(), nextIndex, true /* makeCurrentItem */)
@@ -492,6 +497,15 @@ Item {
                         visible: toolStrip._isMissionLayer
                         onTriggered: {
                             insertLandItemAfterCurrent()
+                        }
+                    },
+                    ToolStripAction {
+                        text: qsTr("Strike")
+                        iconSource: "/res/strike_target.svg"
+                        enabled: _missionController.flyThroughCommandsAllowed
+                        visible: toolStrip._isMissionLayer && (_planMasterController.controllerVehicle.fixedWing || _planMasterController.controllerVehicle.vtol)
+                        onTriggered: {
+                            insertStrikeItemAfterCurrent()
                         }
                     },
                     ToolStripAction {

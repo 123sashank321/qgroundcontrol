@@ -386,7 +386,7 @@ QString SimpleMissionItem::abbreviation() const
     case MAV_CMD_DO_SET_ROI:
     case MAV_CMD_DO_SET_ROI_LOCATION:
         return tr("ROI");
-    case 31010: // MAV_CMD_USER_1 (Strike) -- not a named enum constant in this MAVLink dialect
+    case StrikeCommand: // MAV_CMD_USER_1 -- not a named enum constant in this MAVLink dialect
         return tr("Strike");
     case MAV_CMD_NAV_LOITER_TIME:
     case MAV_CMD_NAV_LOITER_TURNS:
@@ -826,6 +826,12 @@ void SimpleMissionItem::_setDefaultsForCommand(void)
         // Note that setAltitudeMode will also set MAV_FRAME correctly through signalling
         // Takeoff items always use relative alt since that is the highest quality data to base altitude from
         setAltitudeMode(isTakeoffItem() ? QGroundControlQmlGlobal::AltitudeModeRelative : _missionController->globalAltitudeModeDefault());
+        if (isStrikeItem()) {
+            // The target is on the ground: 0 m above terrain, sent as the terrain's AMSL altitude
+            _altitudeFact.setRawValue(0);
+            _missionItem._param7Fact.setRawValue(0);
+            setAltitudeMode(QGroundControlQmlGlobal::AltitudeModeCalcAboveTerrain);
+        }
     } else {
         _altitudeFact.setRawValue(0);
         _missionItem._param7Fact.setRawValue(0);

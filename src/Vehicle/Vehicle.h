@@ -913,6 +913,7 @@ private slots:
     void _parametersReady                   (bool parametersReady);
     void _remoteControlRSSIChanged          (uint8_t rssi);
     void _handleFlightModeChanged           (const QString& flightMode);
+    void _updateInStrikeMode                ();
     void _announceArmedChanged              (bool armed);
     void _offlineCruiseSpeedSettingChanged  (QVariant value);
     void _offlineHoverSpeedSettingChanged   (QVariant value);
@@ -936,6 +937,7 @@ private slots:
     void _gotProgressUpdate                 (float progressValue);
     void _doSetHomeTerrainReceived          (bool success, QList<double> heights);
     void _roiTerrainReceived                (bool success, QList<double> heights);
+    void _strikeTerrainReceived             (bool success, QList<double> heights);
     void _sendROICommand                    (const QGeoCoordinate& coord, MAV_FRAME frame, float altitude);
     void _updateAltAboveTerrain             ();
     void _altitudeAboveTerrainReceived      (bool sucess, QList<double> heights);
@@ -990,6 +992,8 @@ void _activeVehicleChanged          (Vehicle* newActiveVehicle);
     bool setFlightModeCustom            (const QString& flightMode, uint8_t* base_mode, uint32_t* custom_mode);
 
     static void _rebootCommandResultHandler(void* resultHandlerData, int compId, const mavlink_command_ack_t& ack, MavCmdResultFailureCode_t failureCode);
+    static void _strikeCommandResultHandler(void* resultHandlerData, int compId, const mavlink_command_ack_t& ack, MavCmdResultFailureCode_t failureCode);
+    void _sendStrikeCommand(const QGeoCoordinate& strikeCoord, float altitudeAMSL);
 
     // The following methods should only be called by unit tests
     void _deleteGimbalController();
@@ -1020,8 +1024,11 @@ void _activeVehicleChanged          (Vehicle* newActiveVehicle);
     QGeoCoordinate  _armedPosition;
 
     // Strike mode state
-    bool                        _inStrikeMode = false;
-    QGeoCoordinate              _strikeTarget;
+    bool                        _inStrikeMode = false;      ///< Follows the flight mode the vehicle reports
+    QGeoCoordinate              _strikeTarget;              ///< Target the vehicle accepted
+    QGeoCoordinate              _requestedStrikeTarget;     ///< Target sent, awaiting COMMAND_ACK
+    TerrainAtCoordinateQuery*   _strikeTerrainAtCoordinateQuery = nullptr;
+    QGeoCoordinate              _strikeTerrainCoordinate;   ///< Map click awaiting its terrain altitude
 
     qreal           _initialGCSPressure = 0.;
     qreal           _initialGCSTemperature = 0.;

@@ -143,6 +143,13 @@ public:
     /// @return Newly created item
     Q_INVOKABLE VisualMissionItem*  insertROIMissionItem(QGeoCoordinate coordinate, int visualItemIndex, bool makeCurrentItem = false);
 
+    /// Add a new Strike Point (MAV_CMD_USER_1) item to the list. Its altitude is pinned to terrain.
+    ///     @param coordinate: Coordinate for item
+    ///     @param visualItemIndex: index to insert at, -1 for end of list
+    ///     @param makeCurrentItem: true: Make this item the current item
+    /// @return Newly created item
+    Q_INVOKABLE VisualMissionItem*  insertStrikeItem(QGeoCoordinate coordinate, int visualItemIndex, bool makeCurrentItem = false);
+
     /// Add a new Cancel ROI mission item to the list
     ///     @param visualItemIndex: index to insert at, -1 for end of list
     ///     @param makeCurrentItem: true: Make this item the current item

@@ -20,6 +20,8 @@ public:
 
     ~SimpleMissionItem();
 
+    static constexpr int StrikeCommand = 31010; ///< MAV_CMD_USER_1, handled by the PX4-Striker striker module
+
     Q_PROPERTY(QString          category                READ category                                           NOTIFY commandChanged)
     Q_PROPERTY(bool             friendlyEditAllowed     READ friendlyEditAllowed                                NOTIFY friendlyEditAllowedChanged)
     Q_PROPERTY(bool             rawEdit                 READ rawEdit                WRITE setRawEdit            NOTIFY rawEditChanged)              ///< true: raw item editing with all params
@@ -28,6 +30,7 @@ public:
     Q_PROPERTY(QGroundControlQmlGlobal::AltMode altitudeMode READ altitudeMode WRITE setAltitudeMode       NOTIFY altitudeModeChanged)
     Q_PROPERTY(Fact*            amslAltAboveTerrain     READ amslAltAboveTerrain                                CONSTANT)                           ///< Actual AMSL altitude for item if altitudeMode == AltitudeAboveTerrain
     Q_PROPERTY(int              command                 READ command                WRITE setCommand            NOTIFY commandChanged)
+    Q_PROPERTY(bool             isStrikeItem            READ isStrikeItem                                       NOTIFY commandChanged)              ///< Target altitude is pinned to terrain, not editable
     Q_PROPERTY(bool             isLoiterItem            READ isLoiterItem                                       NOTIFY isLoiterItemChanged)
     Q_PROPERTY(bool             showLoiterRadius        READ showLoiterRadius                                   NOTIFY showLoiterRadiusChanged)
     Q_PROPERTY(double           loiterRadius            READ loiterRadius           WRITE setRadius             NOTIFY loiterRadiusChanged)
@@ -68,6 +71,7 @@ public:
     Fact*           altitude            (void) { return &_altitudeFact; }
     Fact*           amslAltAboveTerrain (void) { return &_amslAltAboveTerrainFact; }
     bool            isLoiterItem        (void) const;
+    bool            isStrikeItem        (void) const { return command() == StrikeCommand; }
     bool            showLoiterRadius    (void) const;
     double          loiterRadius        (void) const;
 

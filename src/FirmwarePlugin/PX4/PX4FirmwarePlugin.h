@@ -32,6 +32,7 @@ public:
     QString             gotoFlightMode                  (void) const override;
     QString             followFlightMode                (void) const override;
     QString             takeOffFlightMode               (void) const override;
+    QString             strikeFlightMode                (void) const override;
     QString             stabilizedFlightMode            (void) const override;
     void                pauseVehicle                    (Vehicle* vehicle) const override;
     void                guidedModeRTL                   (Vehicle* vehicle, bool smartRTL) const override;
