@@ -493,20 +493,92 @@ FlightMap {
         }
     }
 
-    // Strike Location visuals
-    // Shown only while the vehicle reports strike mode and has accepted a target
+    // Strike visuals: target, Initial Point (IP), Attack Heading Point (AHP) and the IP -> AHP -> target run.
+    // Shown only while the vehicle reports strike mode; IP/AHP/phase come from PX4's STRIKE_STATUS stream.
+    property bool   _strikeVisible:     _activeVehicle && _activeVehicle.inStrikeMode && _activeVehicle.strikeTarget.isValid
+    property bool   _strikeRunVisible:  _strikeVisible && _activeVehicle.strikeInitialPoint.isValid && _activeVehicle.strikeAttackHeadingPoint.isValid
+    property string _strikeDistanceText: _strikeVisible
+                                         ? QGroundControl.unitsConversion.metersToAppSettingsHorizontalDistanceUnits(_activeVehicle.strikeTargetDistance).toFixed(0) + " " + QGroundControl.unitsConversion.appSettingsHorizontalDistanceUnitsString
+                                         : ""
+
+    MapPolyline {
+        line.width: 2
+        line.color: "#FF4444"
+        z:          QGroundControl.zOrderTrajectoryLines
+        visible:    _strikeRunVisible
+        path:       _strikeRunVisible ? [ _activeVehicle.strikeInitialPoint, _activeVehicle.strikeAttackHeadingPoint, _activeVehicle.strikeTarget ] : []
+    }
+
+    // IP holding orbit, flown while the vehicle bleeds down to IP altitude before ALIGNMENT
+    MapCircle {
+        z:              QGroundControl.zOrderTrajectoryLines
+        center:         _strikeVisible ? _activeVehicle.strikeInitialPoint : QtPositioning.coordinate()
+        radius:         _activeVehicle ? _activeVehicle.strikeIpOrbitRadius : 0
+        border.width:   2
+        border.color:   "#FF4444"
+        color:          "transparent"
+        visible:        _strikeVisible && _activeVehicle.strikeInitialPoint.isValid && _activeVehicle.strikeIpOrbitRadius > 0
+    }
+
+    Repeater {
+        model: _strikeRunVisible ? [
+                   { coord: _activeVehicle.strikeInitialPoint,       label: qsTr("IP") },
+                   { coord: _activeVehicle.strikeAttackHeadingPoint, label: qsTr("AHP") }
+               ] : []
+
+        delegate: MapQuickItem {
+            coordinate:     modelData.coord
+            z:              QGroundControl.zOrderMapItems
+            anchorPoint.x:  sourceItem.anchorPointX
+            anchorPoint.y:  sourceItem.anchorPointY
+
+            sourceItem: MissionItemIndexLabel {
+                checked:    false
+                index:      -1
+                label:      modelData.label
+            }
+        }
+    }
+
     MapQuickItem {
         id:             strikeLocationItem
-        visible:        _activeVehicle && _activeVehicle.inStrikeMode && _activeVehicle.strikeTarget.isValid
+        visible:        _strikeVisible
         coordinate:     _activeVehicle ? _activeVehicle.strikeTarget : QtPositioning.coordinate()
         z:              QGroundControl.zOrderMapItems
-        anchorPoint.x:  sourceItem.anchorPointX
-        anchorPoint.y:  sourceItem.anchorPointY
+        anchorPoint.x:  strikeTargetImage.width / 2
+        anchorPoint.y:  strikeTargetImage.height / 2
 
-        sourceItem: MissionItemIndexLabel {
-            checked:    true
-            index:      -1
-            label:      qsTr("Strike", "Strike location waypoint")
+        sourceItem: Item {
+            width:  strikeTargetImage.width
+            height: strikeTargetImage.height
+
+            Image {
+                id:                 strikeTargetImage
+                source:             "/res/strike_target.svg"
+                width:              ScreenTools.defaultFontPixelHeight * 2.5
+                height:             width
+                sourceSize.width:   width
+                sourceSize.height:  height
+            }
+
+            // Phase and live distance, e.g. "Alignment · 1240 m"
+            Rectangle {
+                anchors.top:                strikeTargetImage.bottom
+                anchors.horizontalCenter:   strikeTargetImage.horizontalCenter
+                width:                      strikeTargetLabel.contentWidth + ScreenTools.defaultFontPixelWidth
+                height:                     strikeTargetLabel.contentHeight
+                radius:                     height / 4
+                color:                      Qt.rgba(0, 0, 0, 0.6)
+
+                QGCLabel {
+                    id:                 strikeTargetLabel
+                    anchors.centerIn:   parent
+                    color:              "white"
+                    text:               _activeVehicle && _activeVehicle.strikePhaseText !== ""
+                                        ? _activeVehicle.strikePhaseText + " · " + _strikeDistanceText
+                                        : _strikeDistanceText
+                }
+            }
         }
     }
 

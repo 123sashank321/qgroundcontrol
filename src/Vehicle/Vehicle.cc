@@ -116,6 +116,11 @@ Vehicle::Vehicle(LinkInterface*             link,
 
     connect(this, &Vehicle::flightModeChanged,          this, &Vehicle::_handleFlightModeChanged);
     connect(this, &Vehicle::flightModeChanged,          this, &Vehicle::_updateInStrikeMode);
+    connect(this, &Vehicle::coordinateChanged,          this, [this]() {
+        if (_inStrikeMode && _strikeTarget.isValid()) {
+            emit strikeTargetDistanceChanged(strikeTargetDistance());
+        }
+    });
     connect(this, &Vehicle::armedChanged,               this, &Vehicle::_announceArmedChanged);
     connect(this, &Vehicle::flyingChanged, this, [this](bool flying){
         if (flying) {
@@ -628,6 +633,9 @@ void Vehicle::_mavlinkMessageReceived(LinkInterface* link, mavlink_message_t mes
     }
     case MAVLINK_MSG_ID_CURRENT_MODE:
         _handleCurrentMode(message);
+        break;
+    case MAVLINK_MSG_ID_NAMED_VALUE_INT:
+        _handleNamedValueInt(message);
         break;
 
         // Following are ArduPilot dialect messages
@@ -2297,8 +2305,18 @@ void Vehicle::_strikeTerrainReceived(bool success, QList<double> heights)
         return;
     }
 
+    // Terrain at or above the vehicle means the terrain database and the vehicle's altitude
+    // reference disagree (e.g. SITL worlds sit at 0 m AMSL): striking it would send the vehicle
+    // climbing towards a point above itself, so treat it as a failed query.
+    const double vehicleAMSL = _altitudeAMSLFact.rawValue().toDouble();
+    const bool terrainUsable = success && !heights.isEmpty()
+            && (!qIsFinite(vehicleAMSL) || heights[0] < vehicleAMSL);
+    if (success && !heights.isEmpty() && !terrainUsable) {
+        qCWarning(VehicleLog) << "guidedModeStrike: terrain" << heights[0] << "m is not below vehicle" << vehicleAMSL << "m AMSL, ignoring it";
+    }
+
     float strikeAlt;
-    if (success && !heights.isEmpty()) {
+    if (terrainUsable) {
         strikeAlt = static_cast<float>(heights[0]);
     } else if (qIsFinite(_homePosition.altitude())) {
         qCWarning(VehicleLog) << "guidedModeStrike: terrain query failed, using home altitude";
@@ -2378,6 +2396,7 @@ void Vehicle::_updateInStrikeMode()
         // Strike completed, aborted or dropped by the vehicle: the target no longer applies
         _strikeTarget = QGeoCoordinate();
         emit strikeTargetChanged(_strikeTarget);
+        _clearStrikeGuidance();
     }
     emit inStrikeModeChanged(_inStrikeMode);
     emit strikeTargetDistanceChanged(strikeTargetDistance());
@@ -2419,6 +2438,86 @@ void Vehicle::guidedModeAbortStrike(const QGeoCoordinate& recoveryCoord)
 
     // Strike state clears when the vehicle reports it has left strike mode (_updateInStrikeMode)
     _requestedStrikeTarget = QGeoCoordinate();
+}
+
+void Vehicle::_handleNamedValueInt(const mavlink_message_t& message)
+{
+    mavlink_named_value_int_t namedValue;
+    mavlink_msg_named_value_int_decode(&message, &namedValue);
+
+    // name is not null terminated when it uses all 10 characters
+    const QString name = QString::fromLatin1(namedValue.name, static_cast<int>(strnlen(namedValue.name, sizeof(namedValue.name))));
+    if (!name.startsWith(QStringLiteral("STR_"))) {
+        return;
+    }
+
+    // Sent by PX4-Striker's STRIKE_STATUS stream; ignore stragglers once the strike is over
+    if (!_inStrikeMode) {
+        return;
+    }
+
+    const int32_t value = namedValue.value;
+    if (name == QStringLiteral("STR_PHASE")) {
+        if (value != _strikePhase) {
+            _strikePhase = value;
+            emit strikeGuidanceChanged();
+        }
+        return;
+    } else if (name == QStringLiteral("STR_IP_RAD")) {
+        const double radius = value / 10.0; // arrives in decimeters
+        if (!qFuzzyCompare(radius, _strikeIpOrbitRadiusM)) {
+            _strikeIpOrbitRadiusM = radius;
+            emit strikeGuidanceChanged();
+        }
+        return;
+    } else if (name == QStringLiteral("STR_IP_LAT")) {
+        _strikeIpLatE7 = value;
+    } else if (name == QStringLiteral("STR_IP_LON")) {
+        _strikeIpLonE7 = value;
+    } else if (name == QStringLiteral("STR_AH_LAT")) {
+        _strikeAhpLatE7 = value;
+    } else if (name == QStringLiteral("STR_AH_LON")) {
+        _strikeAhpLonE7 = value;
+    } else {
+        return;
+    }
+
+    // Lat arrives before lon; only publish a point once both halves are known
+    const QGeoCoordinate ip = (_strikeIpLatE7 != 0 && _strikeIpLonE7 != 0)
+            ? QGeoCoordinate(_strikeIpLatE7 * 1e-7, _strikeIpLonE7 * 1e-7) : QGeoCoordinate();
+    const QGeoCoordinate ahp = (_strikeAhpLatE7 != 0 && _strikeAhpLonE7 != 0)
+            ? QGeoCoordinate(_strikeAhpLatE7 * 1e-7, _strikeAhpLonE7 * 1e-7) : QGeoCoordinate();
+    if (ip != _strikeInitialPoint || ahp != _strikeAttackHeadingPoint) {
+        _strikeInitialPoint = ip;
+        _strikeAttackHeadingPoint = ahp;
+        emit strikeGuidanceChanged();
+    }
+}
+
+void Vehicle::_clearStrikeGuidance()
+{
+    _strikePhase = StrikePhaseNone;
+    _strikeInitialPoint = QGeoCoordinate();
+    _strikeAttackHeadingPoint = QGeoCoordinate();
+    _strikeIpLatE7 = _strikeIpLonE7 = _strikeAhpLatE7 = _strikeAhpLonE7 = 0;
+    _strikeIpOrbitRadiusM = 0;
+    emit strikeGuidanceChanged();
+}
+
+QString Vehicle::strikePhaseText() const
+{
+    switch (_strikePhase) {
+    case StrikePhaseIngress:
+        return tr("Ingress");
+    case StrikePhaseAlignment:
+        return tr("Alignment");
+    case StrikePhaseTerminal:
+        return tr("Terminal");
+    case StrikePhaseRecovery:
+        return tr("Recovery");
+    default:
+        return QString();
+    }
 }
 
 double Vehicle::strikeTargetDistance() const

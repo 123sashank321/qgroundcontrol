@@ -238,6 +238,11 @@ public:
     Q_PROPERTY(bool             inStrikeMode            READ inStrikeMode                                   NOTIFY inStrikeModeChanged)         ///< Vehicle is currently executing strike command
     Q_PROPERTY(QGeoCoordinate   strikeTarget            READ strikeTarget                                   NOTIFY strikeTargetChanged)         ///< Current strike target coordinates
     Q_PROPERTY(double           strikeTargetDistance    READ strikeTargetDistance                           NOTIFY strikeTargetDistanceChanged) ///< Distance to strike target in meters
+    Q_PROPERTY(int              strikePhase             READ strikePhase                                    NOTIFY strikeGuidanceChanged)       ///< Guidance phase reported by PX4 (StrikePhase), StrikePhaseNone if unknown
+    Q_PROPERTY(QString          strikePhaseText         READ strikePhaseText                                NOTIFY strikeGuidanceChanged)       ///< Display name of strikePhase, empty if unknown
+    Q_PROPERTY(QGeoCoordinate   strikeInitialPoint      READ strikeInitialPoint                             NOTIFY strikeGuidanceChanged)       ///< Initial Point (IP) of the attack run
+    Q_PROPERTY(QGeoCoordinate   strikeAttackHeadingPoint READ strikeAttackHeadingPoint                      NOTIFY strikeGuidanceChanged)       ///< Attack Heading Point (AHP), end of the IP->AHP alignment leg
+    Q_PROPERTY(double           strikeIpOrbitRadius     READ strikeIpOrbitRadius                            NOTIFY strikeGuidanceChanged)       ///< IP holding-orbit radius in meters, 0 if unknown
 
     Q_PROPERTY(ParameterManager*        parameterManager    READ parameterManager   CONSTANT)
     Q_PROPERTY(VehicleLinkManager*      vehicleLinkManager  READ vehicleLinkManager CONSTANT)
@@ -531,7 +536,22 @@ public:
     uint            messagesLost                () const{ return _messagesLost; }
     bool            flying                      () const { return _flying; }
     bool            landing                     () const { return _landing; }
+    /// Phases of PX4-Striker's guidance, as sent in STR_PHASE (strike_status_s::PHASE_*)
+    enum StrikePhase {
+        StrikePhaseNone         = -1,
+        StrikePhaseIngress      = 0,
+        StrikePhaseAlignment    = 1,
+        StrikePhaseTerminal     = 2,
+        StrikePhaseRecovery     = 3,
+    };
+    Q_ENUM(StrikePhase)
+
     bool            inStrikeMode                () const { return _inStrikeMode; }
+    int             strikePhase                 () const { return _strikePhase; }
+    QString         strikePhaseText             () const;
+    QGeoCoordinate  strikeInitialPoint          () const { return _strikeInitialPoint; }
+    QGeoCoordinate  strikeAttackHeadingPoint    () const { return _strikeAttackHeadingPoint; }
+    double          strikeIpOrbitRadius         () const { return _strikeIpOrbitRadiusM; }
     QGeoCoordinate  strikeTarget                () const { return _strikeTarget; }
     double          strikeTargetDistance        () const;
     bool            guidedMode                  () const;
@@ -827,6 +847,7 @@ signals:
     void inStrikeModeChanged            (bool inStrikeMode);
     void strikeTargetChanged            (const QGeoCoordinate& strikeTarget);
     void strikeTargetDistanceChanged    (double distance);
+    void strikeGuidanceChanged          ();
     void guidedModeChanged              (bool guidedMode);
     void inFwdFlightChanged             ();
     void vtolInFwdFlightChanged         (bool vtolInFwdFlight);
@@ -949,6 +970,8 @@ void _activeVehicleChanged          (Vehicle* newActiveVehicle);
     void _handleHomePosition            (mavlink_message_t& message);
     void _handleHeartbeat               (mavlink_message_t& message);
     void _handleCurrentMode             (mavlink_message_t& message);
+    void _handleNamedValueInt           (const mavlink_message_t& message);
+    void _clearStrikeGuidance           ();
     void _handleRadioStatus             (mavlink_message_t& message);
     void _handleRCChannels              (mavlink_message_t& message);
     void _handleBatteryStatus           (mavlink_message_t& message);
@@ -1028,6 +1051,14 @@ void _activeVehicleChanged          (Vehicle* newActiveVehicle);
     QGeoCoordinate              _strikeTarget;              ///< Target the vehicle accepted
     QGeoCoordinate              _requestedStrikeTarget;     ///< Target sent, awaiting COMMAND_ACK
     TerrainAtCoordinateQuery*   _strikeTerrainAtCoordinateQuery = nullptr;
+    int                         _strikePhase = StrikePhaseNone;
+    QGeoCoordinate              _strikeInitialPoint;
+    QGeoCoordinate              _strikeAttackHeadingPoint;
+    int32_t                     _strikeIpLatE7 = 0;             ///< STR_IP_LAT/LON/AH_LAT/LON arrive as separate messages
+    int32_t                     _strikeIpLonE7 = 0;
+    int32_t                     _strikeAhpLatE7 = 0;
+    int32_t                     _strikeAhpLonE7 = 0;
+    double                      _strikeIpOrbitRadiusM = 0;      ///< STR_IP_RAD, arrives in decimeters
     QGeoCoordinate              _strikeTerrainCoordinate;   ///< Map click awaiting its terrain altitude
 
     qreal           _initialGCSPressure = 0.;

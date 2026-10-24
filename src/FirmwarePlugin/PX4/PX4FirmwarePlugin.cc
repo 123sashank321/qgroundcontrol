@@ -826,14 +826,15 @@ void PX4FirmwarePlugin::updateAvailableFlightModes(FlightModeList &modeList)
         }
     }
 
-    // PX4 does not advertise the strike nav state in AVAILABLE_MODES, so a vehicle-supplied
-    // mode list would drop its name. Keep it mapped; it is entered by command, never selected.
-    const bool haveStrikeMode = std::any_of(modeList.cbegin(), modeList.cend(), [](const FirmwareFlightMode& mode) {
+    // PX4-Striker reports the strike nav state as AUTO/EXTERNAL1, the same custom mode as
+    // NAVIGATION_STATE_EXTERNAL1. AVAILABLE_MODES advertises that slot as "(Mode not available)"
+    // when no external mode is registered, so the vehicle-supplied entry must be renamed, not
+    // just added when missing - otherwise flightMode() never matches strikeFlightMode().
+    // It is entered by command, never selected.
+    modeList.erase(std::remove_if(modeList.begin(), modeList.end(), [](const FirmwareFlightMode& mode) {
         return mode.custom_mode == PX4CustomMode::AUTO_STRIKE;
-    });
-    if (!haveStrikeMode) {
-        modeList.append(FirmwareFlightMode(tr(kStrikeFlightModeName), PX4CustomMode::AUTO_STRIKE, false /* canBeSet */, true /* advanced */));
-    }
+    }), modeList.end());
+    modeList.append(FirmwareFlightMode(tr(kStrikeFlightModeName), PX4CustomMode::AUTO_STRIKE, false /* canBeSet */, true /* advanced */));
 
     _updateFlightModeList(modeList);
 }
