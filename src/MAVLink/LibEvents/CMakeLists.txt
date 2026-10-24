@@ -21,7 +21,8 @@ target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE ${CMAKE_CURRENT_SOURCE_
 CPMAddPackage(
     NAME libevents
     GITHUB_REPOSITORY mavlink/libevents
-    GIT_TAG main
+    # Pinned: libevents main (0ef305f, 32-bit system IDs) needs MAVLink helpers newer than QGC_MAVLINK_GIT_TAG
+    GIT_TAG 077677a7d2f48f0af0eb8a4e4a7b6310956728bc
     SOURCE_SUBDIR libs/cpp
 )
 
